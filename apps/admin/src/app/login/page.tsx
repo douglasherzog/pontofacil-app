@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { login } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { getToken } from "@/lib/tokenStorage";
+import { HerzogDeveloperSignature } from "@/components/HerzogDeveloperSignature";
 
 type UserRole = "admin" | "employee";
 
@@ -118,6 +119,10 @@ export default function LoginPage() {
 
           <div className="mt-6 text-xs text-white/70">
             Primeiro acesso: <span className="font-semibold">admin@local</span> / <span className="font-semibold">admin</span>
+          </div>
+
+          <div className="mt-4 rounded-xl bg-white/10 px-3 py-2 ring-1 ring-white/15">
+            <HerzogDeveloperSignature tone="light" />
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { clearToken } from "@/lib/tokenStorage";
 import { getToken } from "@/lib/tokenStorage";
+import { HerzogDeveloperSignature } from "@/components/HerzogDeveloperSignature";
 
 type NavItem = { href: string; label: string };
 
@@ -109,6 +110,10 @@ export function AppShell({ title, children }: { title: string; children: React.R
           >
             Sair
           </button>
+
+          <div className="mt-4">
+            <HerzogDeveloperSignature />
+          </div>
         </aside>
 
         <main className="rounded-2xl border border-zinc-200/70 bg-white/70 p-6 shadow-sm backdrop-blur">
