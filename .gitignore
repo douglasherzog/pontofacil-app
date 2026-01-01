@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# next.js
+.next/
+out/
+
+# builds
+build/
+dist/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env
+.env*
+
+# local db
+app.db
+apps/api/app.db
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo

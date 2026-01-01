@@ -1,0 +1,12 @@
+{
+  "name": "pontofacil-app",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "pnpm -r --if-present dev",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "setup:env:admin": "node tools/setup-env-admin.mjs",
+    "docs:pdf": "node tools/build-manual.mjs"
+  }
+}
