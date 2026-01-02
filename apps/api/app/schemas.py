@@ -33,6 +33,36 @@ class EmployeeOut(BaseModel):
     is_active: bool
 
 
+class EmployeeAuthPolicyUpsert(BaseModel):
+    allow_password_login: bool
+    allow_face_login: bool
+
+
+class EmployeeAuthPolicyOut(EmployeeAuthPolicyUpsert):
+    updated_at: datetime
+
+
+class DevicePairingCodeOut(BaseModel):
+    code: str
+    expires_at: datetime
+
+
+class PairDeviceRequest(BaseModel):
+    code: str = Field(min_length=8)
+    device_id: str = Field(min_length=8, max_length=128)
+    device_name: str | None = Field(default=None, max_length=255)
+
+
+class PairDeviceResponse(BaseModel):
+    device_secret: str
+    employee_user_id: int
+
+
+class DeviceLoginRequest(BaseModel):
+    device_id: str
+    device_secret: str
+
+
 class ConfigLocalUpsert(BaseModel):
     local_lat: float
     local_lng: float

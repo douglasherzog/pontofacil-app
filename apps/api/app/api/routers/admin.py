@@ -1,6 +1,7 @@
 import json
 import re
 import base64
+import secrets
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -12,7 +13,10 @@ from app.core.security import hash_password
 from app.db.deps import get_db
 from app.models import (
     ConfigLocal,
+    DevicePairingCode,
+    EmployeeAuthPolicy,
     EmployeeProfile,
+    EmployeeDevice,
     Ponto,
     PontoCorrectionConfig,
     JornadaValidationConfig,
@@ -29,6 +33,9 @@ from app.schemas import (
     ConfigLocalOut,
     ConfigLocalUpsert,
     EmployeeCreate,
+    EmployeeAuthPolicyOut,
+    EmployeeAuthPolicyUpsert,
+    DevicePairingCodeOut,
     EmployeeOut,
     JornadaValidationConfigOut,
     JornadaValidationConfigUpsert,
@@ -302,6 +309,93 @@ def create_employee(
     db.refresh(user)
 
     return EmployeeOut(id=user.id, email=user.email, nome=profile.nome, is_active=user.is_active)
+
+
+def _get_employee_policy(db: Session, employee_user_id: int) -> EmployeeAuthPolicy:
+    row = db.query(EmployeeAuthPolicy).filter(EmployeeAuthPolicy.employee_user_id == employee_user_id).first()
+    if row:
+        return row
+    row = EmployeeAuthPolicy(employee_user_id=employee_user_id, allow_password_login=True, allow_face_login=False)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/funcionarios/{employee_user_id}/auth-policy", response_model=EmployeeAuthPolicyOut)
+def get_employee_auth_policy(
+    employee_user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    employee = db.get(User, employee_user_id)
+    if not employee or employee.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    row = _get_employee_policy(db, employee.id)
+    return EmployeeAuthPolicyOut(
+        allow_password_login=row.allow_password_login,
+        allow_face_login=row.allow_face_login,
+        updated_at=_utc_naive_to_sp(row.updated_at),
+    )
+
+
+@router.put("/funcionarios/{employee_user_id}/auth-policy", response_model=EmployeeAuthPolicyOut)
+def upsert_employee_auth_policy(
+    employee_user_id: int,
+    payload: EmployeeAuthPolicyUpsert,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    employee = db.get(User, employee_user_id)
+    if not employee or employee.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    row = _get_employee_policy(db, employee.id)
+    row.allow_password_login = payload.allow_password_login
+    row.allow_face_login = payload.allow_face_login
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return EmployeeAuthPolicyOut(
+        allow_password_login=row.allow_password_login,
+        allow_face_login=row.allow_face_login,
+        updated_at=_utc_naive_to_sp(row.updated_at),
+    )
+
+
+@router.post("/funcionarios/{employee_user_id}/device-pairing-code", response_model=DevicePairingCodeOut)
+def create_device_pairing_code(
+    employee_user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    employee = db.get(User, employee_user_id)
+    if not employee or employee.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    # Revoke any existing active device so only the new pairing can be used.
+    now = datetime.utcnow()
+    active_devices = (
+        db.query(EmployeeDevice)
+        .filter(EmployeeDevice.employee_user_id == employee.id)
+        .filter(EmployeeDevice.revoked_at.is_(None))
+        .all()
+    )
+    for d in active_devices:
+        d.revoked_at = now
+
+    code = secrets.token_urlsafe(9)
+    expires_at = now + timedelta(minutes=10)
+
+    row = DevicePairingCode(
+        employee_user_id=employee.id,
+        code_hash=hash_password(code),
+        expires_at=expires_at,
+    )
+    db.add(row)
+    db.commit()
+    return DevicePairingCodeOut(code=code, expires_at=_utc_naive_to_sp(expires_at))
 
 
 @router.put("/config-local", response_model=ConfigLocalOut)

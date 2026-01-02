@@ -34,6 +34,40 @@ class EmployeeProfile(Base):
     user: Mapped[User] = relationship(back_populates="employee_profile")
 
 
+class EmployeeAuthPolicy(Base):
+    __tablename__ = "employee_auth_policy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    employee_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    allow_password_login: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_face_login: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EmployeeDevice(Base):
+    __tablename__ = "employee_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    device_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    device_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    device_secret_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DevicePairingCode(Base):
+    __tablename__ = "device_pairing_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    consumed_by_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
 class PontoTipo(str, enum.Enum):
     entrada = "entrada"
     saida = "saida"

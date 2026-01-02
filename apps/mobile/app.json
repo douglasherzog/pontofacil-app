@@ -13,9 +13,14 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Precisamos acessar a câmera para ler o QR code de pareamento do dispositivo.",
+        "NSLocationWhenInUseUsageDescription": "Precisamos acessar sua localização para validar o registro de ponto."
+      }
     },
     "android": {
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

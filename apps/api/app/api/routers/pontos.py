@@ -2,12 +2,12 @@ import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.deps import get_db
-from app.models import ConfigLocal, JornadaValidationConfig, Ponto, PontoTipo, User, UserRole
+from app.models import ConfigLocal, EmployeeDevice, JornadaValidationConfig, Ponto, PontoTipo, User, UserRole
 from app.schemas import JornadaDiaOut, JornadaSegmentOut, PontoAutoCreate, PontoCreate, PontoOut
 
 
@@ -57,6 +57,21 @@ def _strict_next_tipo_from_last(last: Ponto | None) -> str:
     return next_map.get(last_tipo, "")
 
 router = APIRouter(prefix="/pontos", tags=["pontos"])
+
+
+def _assert_employee_device(db: Session, employee_user_id: int, device_id: str | None) -> None:
+    if not device_id:
+        raise HTTPException(status_code=401, detail="Dispositivo não identificado")
+
+    row = (
+        db.query(EmployeeDevice)
+        .filter(EmployeeDevice.employee_user_id == employee_user_id)
+        .filter(EmployeeDevice.device_id == device_id)
+        .filter(EmployeeDevice.revoked_at.is_(None))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=403, detail="Este celular não está cadastrado para este funcionário")
 
 
 def _fmt_hhmm(total_seconds: int) -> str:
@@ -188,9 +203,12 @@ def create_ponto(
     payload: PontoCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    x_device_id: str | None = Header(default=None, alias="X-Device-Id"),
 ):
     if current_user.role == UserRole.admin:
         raise HTTPException(status_code=403, detail="Administrador não registra ponto")
+
+    _assert_employee_device(db, current_user.id, x_device_id)
 
     now_sp = datetime.now(tz=SP_TZ)
     date_str = now_sp.date().isoformat()
@@ -256,9 +274,12 @@ def create_ponto_auto(
     payload: PontoAutoCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    x_device_id: str | None = Header(default=None, alias="X-Device-Id"),
 ):
     if current_user.role == UserRole.admin:
         raise HTTPException(status_code=403, detail="Administrador não registra ponto")
+
+    _assert_employee_device(db, current_user.id, x_device_id)
 
     now_sp = datetime.now(tz=SP_TZ)
     date_str = now_sp.date().isoformat()
