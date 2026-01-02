@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { apiRequest } from "@/lib/api";
 import { formatDateTimeSP } from "@/lib/dateFormat";
-import { getToken } from "@/lib/tokenStorage";
+import { getSession } from "@/lib/session";
 
 type ConfigLocalOut = {
   local_lat: number;
@@ -25,7 +25,7 @@ type JornadaValidationConfigOut = {
 };
 
 export default function ConfiguracoesPage() {
-  const token = useMemo(() => getToken() ?? undefined, []);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [current, setCurrent] = useState<ConfigLocalOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,9 +65,8 @@ export default function ConfiguracoesPage() {
   }
 
   async function loadCorrectionConfig() {
-    if (!token) return;
     setCorrectionLoading(true);
-    const res = await apiRequest<PontoCorrectionConfigOut>("/admin/pontos-correction-config", { method: "GET", token });
+    const res = await apiRequest<PontoCorrectionConfigOut>("/admin/pontos-correction-config", { method: "GET" });
     setCorrectionLoading(false);
     if (!res.ok) {
       setError(res.error);
@@ -79,9 +78,8 @@ export default function ConfiguracoesPage() {
   }
 
   async function loadJornadaValidationConfig() {
-    if (!token) return;
     setJornadaValidationLoading(true);
-    const res = await apiRequest<JornadaValidationConfigOut>("/admin/jornada-validation-config", { method: "GET", token });
+    const res = await apiRequest<JornadaValidationConfigOut>("/admin/jornada-validation-config", { method: "GET" });
     setJornadaValidationLoading(false);
     if (!res.ok) {
       setError(res.error);
@@ -107,10 +105,24 @@ export default function ConfiguracoesPage() {
   }
 
   useEffect(() => {
-    load();
-    loadCorrectionConfig();
-    loadJornadaValidationConfig();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+
+    queueMicrotask(() => {
+      if (!active) return;
+      load();
+    });
+
+    getSession().then((s) => {
+      if (!active) return;
+      const admin = s.role === "admin";
+      setIsAdmin(admin);
+      if (!admin) return;
+      loadCorrectionConfig();
+      loadJornadaValidationConfig();
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -162,7 +174,6 @@ export default function ConfiguracoesPage() {
 
                 const res = await apiRequest<ConfigLocalOut>("/admin/config-local", {
                   method: "PUT",
-                  token,
                   body: JSON.stringify({ local_lat, local_lng, raio_m }),
                 });
 
@@ -224,7 +235,7 @@ export default function ConfiguracoesPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="submit"
-                  disabled={saving || !token}
+                  disabled={saving || !isAdmin}
                   className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
                 >
                   {saving ? "Salvando..." : "Salvar"}
@@ -238,7 +249,7 @@ export default function ConfiguracoesPage() {
                 </button>
               </div>
 
-              {!token ? (
+              {!isAdmin ? (
                 <div className="text-xs text-zinc-600">Você precisa estar logado como admin para salvar.</div>
               ) : null}
             </form>
@@ -294,7 +305,7 @@ export default function ConfiguracoesPage() {
               type="button"
               onClick={() => loadCorrectionConfig()}
               className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-              disabled={!token || correctionLoading}
+              disabled={!isAdmin || correctionLoading}
             >
               {correctionLoading ? "Carregando..." : "Atualizar"}
             </button>
@@ -304,7 +315,7 @@ export default function ConfiguracoesPage() {
             className="mt-5 flex flex-col gap-3"
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!token) return;
+              if (!isAdmin) return;
               setCorrectionSaving(true);
               setError(null);
               setSuccess(null);
@@ -318,7 +329,6 @@ export default function ConfiguracoesPage() {
 
               const res = await apiRequest<PontoCorrectionConfigOut>("/admin/pontos-correction-config", {
                 method: "PUT",
-                token,
                 body: JSON.stringify({ window_days }),
               });
 
@@ -370,14 +380,14 @@ export default function ConfiguracoesPage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="submit"
-                disabled={!token || correctionSaving}
+                disabled={!isAdmin || correctionSaving}
                 className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
               >
                 {correctionSaving ? "Salvando..." : "Salvar"}
               </button>
             </div>
 
-            {!token ? <div className="text-xs text-zinc-600">Você precisa estar logado como admin para salvar.</div> : null}
+            {!isAdmin ? <div className="text-xs text-zinc-600">Você precisa estar logado como admin para salvar.</div> : null}
           </form>
         </div>
 
@@ -393,7 +403,7 @@ export default function ConfiguracoesPage() {
               type="button"
               onClick={() => loadJornadaValidationConfig()}
               className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-              disabled={!token || jornadaValidationLoading}
+              disabled={!isAdmin || jornadaValidationLoading}
             >
               {jornadaValidationLoading ? "Carregando..." : "Atualizar"}
             </button>
@@ -403,14 +413,13 @@ export default function ConfiguracoesPage() {
             className="mt-5 flex flex-col gap-3"
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!token) return;
+              if (!isAdmin) return;
               setJornadaValidationSaving(true);
               setError(null);
               setSuccess(null);
 
               const res = await apiRequest<JornadaValidationConfigOut>("/admin/jornada-validation-config", {
                 method: "PUT",
-                token,
                 body: JSON.stringify({ intervalo_exige_4_batidas_blocking: Boolean(intervalBlocking) }),
               });
 
@@ -431,7 +440,7 @@ export default function ConfiguracoesPage() {
               <button
                 type="button"
                 onClick={() => setIntervalBlocking((v) => !v)}
-                disabled={!token || jornadaValidationSaving}
+                disabled={!isAdmin || jornadaValidationSaving}
                 className={
                   "h-11 w-fit rounded-xl px-4 text-sm font-semibold shadow disabled:opacity-60 " +
                   (intervalBlocking
@@ -469,14 +478,14 @@ export default function ConfiguracoesPage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="submit"
-                disabled={!token || jornadaValidationSaving}
+                disabled={!isAdmin || jornadaValidationSaving}
                 className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
               >
                 {jornadaValidationSaving ? "Salvando..." : "Salvar"}
               </button>
             </div>
 
-            {!token ? <div className="text-xs text-zinc-600">Você precisa estar logado como admin para salvar.</div> : null}
+            {!isAdmin ? <div className="text-xs text-zinc-600">Você precisa estar logado como admin para salvar.</div> : null}
           </form>
         </div>
       </div>

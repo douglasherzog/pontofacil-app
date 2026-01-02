@@ -5,50 +5,29 @@ import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/AppShell";
 import { apiRequest } from "@/lib/api";
-import { getToken } from "@/lib/tokenStorage";
-
-type UserRole = "admin" | "employee";
-
-function base64UrlDecodeToString(value: string): string {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  return atob(padded);
-}
-
-function getRoleFromToken(token: string | undefined): UserRole | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-
-  try {
-    const json = base64UrlDecodeToString(parts[1]);
-    const payload = JSON.parse(json) as { role?: unknown };
-    return payload.role === "admin" || payload.role === "employee" ? payload.role : null;
-  } catch {
-    return null;
-  }
-}
+import { getSession } from "@/lib/session";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [status, setStatus] = useState<string>("carregando");
-  const role = getRoleFromToken(getToken() ?? undefined);
+  const [role, setRole] = useState<"admin" | "employee" | null>(null);
   const isAdmin = role === "admin";
 
   useEffect(() => {
-    if (role === "employee") {
-      router.replace("/pontos");
-      return;
-    }
-
     const run = async () => {
-      const token = getToken() ?? undefined;
-      const res = await apiRequest<unknown>("/openapi.json", { method: "GET", token });
+      const session = await getSession();
+      setRole(session.role);
+      if (session.role === "employee") {
+        router.replace("/pontos");
+        return;
+      }
+
+      const res = await apiRequest<unknown>("/openapi.json", { method: "GET" });
       setStatus(res.ok ? "API ok" : "Falha ao acessar API");
     };
 
     run();
-  }, [role, router]);
+  }, [router]);
 
   return (
     <AppShell title="Dashboard">

@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "expo": "~54.0.30",
-    "expo-camera": "~16.1.12",
-    "expo-local-authentication": "~17.1.4",
+    "expo-camera": "~17.0.10",
+    "expo-local-authentication": "~17.0.8",
     "expo-location": "~18.1.6",
-    "expo-random": "~15.0.1",
+    "expo-random": "~14.0.1",
     "expo-secure-store": "~15.0.4",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",

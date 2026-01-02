@@ -1,36 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { login } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { getToken } from "@/lib/tokenStorage";
+import { getSession } from "@/lib/session";
 import { HerzogDeveloperSignature } from "@/components/HerzogDeveloperSignature";
 
-type UserRole = "admin" | "employee";
-
-function base64UrlDecodeToString(value: string): string {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  return atob(padded);
-}
-
-function getRoleFromToken(token: string | undefined): UserRole | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-
-  try {
-    const json = base64UrlDecodeToString(parts[1]);
-    const payload = JSON.parse(json) as { role?: unknown };
-    return payload.role === "admin" || payload.role === "employee" ? payload.role : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -70,8 +56,8 @@ export default function LoginPage() {
                 return;
               }
 
-              const role = getRoleFromToken(getToken() ?? undefined);
-              if (role === "employee") {
+              const session = await getSession();
+              if (session.role === "employee") {
                 router.replace("/pontos");
                 return;
               }

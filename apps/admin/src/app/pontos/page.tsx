@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, getDeviceId } from "@/lib/api";
 import { formatDateBR, formatDateTimeSP } from "@/lib/dateFormat";
-import { getToken } from "@/lib/tokenStorage";
+import { getSession } from "@/lib/session";
 
 type PontoTipo = "entrada" | "saida" | "intervalo_inicio" | "intervalo_fim";
 
@@ -72,12 +72,6 @@ type AdminPontoCreatePayload = {
   motivo: string;
 };
 
-function base64UrlDecodeToString(value: string): string {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  return atob(padded);
-}
-
 function spPartsFromIso(iso: string): { date: string; time: string } {
   const d = new Date(iso);
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -110,28 +104,23 @@ function isValidHHMM(value: string): boolean {
   return Number.isFinite(hh) && Number.isFinite(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
 }
 
-function getRoleFromToken(token: string | undefined): UserMe["role"] | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-
-  try {
-    const json = base64UrlDecodeToString(parts[1]);
-    const payload = JSON.parse(json) as { role?: unknown };
-    return payload.role === "admin" || payload.role === "employee" ? payload.role : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function PontosPage() {
-  const token = useMemo(() => getToken() ?? undefined, []);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [sessionRole, setSessionRole] = useState<UserMe["role"] | null>(null);
   const [items, setItems] = useState<PontoOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [pairingRequired, setPairingRequired] = useState(false);
+  const [pairingCode, setPairingCode] = useState("");
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  const [pairingSuccess, setPairingSuccess] = useState<string | null>(null);
+  const [devicePaired, setDevicePaired] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
 
   const [employeeCooldownS, setEmployeeCooldownS] = useState<number>(0);
 
@@ -157,7 +146,7 @@ export default function PontosPage() {
   const [adminRangeStart, setAdminRangeStart] = useState<string>(today);
   const [adminRangeEnd, setAdminRangeEnd] = useState<string>(today);
 
-  const [jornadaDate, setJornadaDate] = useState<string>(today);
+  const [jornadaDate] = useState<string>(today);
   const [adminJornadaDate, setAdminJornadaDate] = useState<string>(today);
 
   const [jornada, setJornada] = useState<JornadaDiaOut | null>(null);
@@ -183,21 +172,27 @@ export default function PontosPage() {
   const [adminModalError, setAdminModalError] = useState<string | null>(null);
   const [adminModalLocLoading, setAdminModalLocLoading] = useState(false);
 
-  const tokenRole = useMemo(() => getRoleFromToken(token), [token]);
-  const isAdmin = me?.role === "admin" || tokenRole === "admin";
+  const isAdmin = me?.role === "admin" || sessionRole === "admin";
 
   const [position, setPosition] = useState<{ lat: number; lng: number; accuracy_m: number | null } | null>(null);
+  const [positionLoading, setPositionLoading] = useState(false);
+  const [positionError, setPositionError] = useState<string | null>(null);
   const [configLocal, setConfigLocal] = useState<ConfigLocalOut | null>(null);
 
   async function loadPontos() {
     setLoading(true);
     setError(null);
     setErrorStatus(null);
+    if (!authenticated) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
     const qs = new URLSearchParams();
     if (rangeStart) qs.set("start", rangeStart);
     if (rangeEnd) qs.set("end", rangeEnd);
     const path = `/pontos/me${qs.toString() ? `?${qs.toString()}` : ""}`;
-    const res = await apiRequest<PontoOut[]>(path, { method: "GET", token });
+    const res = await apiRequest<PontoOut[]>(path, { method: "GET" });
     setLoading(false);
     if (!res.ok) {
       setError(res.error);
@@ -207,27 +202,27 @@ export default function PontosPage() {
     setItems(res.data);
   }
 
-  async function loadMeAndAdminData() {
-    if (!token) return;
+  async function loadMeAndAdminData(isAuthenticated: boolean, role: UserMe["role"] | null) {
+    if (!isAuthenticated) return;
     setAdminError(null);
 
-    const meRes = await apiRequest<UserMe>("/admin/me", { method: "GET", token });
+    const meRes = await apiRequest<UserMe>("/admin/me", { method: "GET" });
     if (!meRes.ok) {
       // If not admin, /admin/me returns 403; that's fine.
       // If it's some other error, surface it. Also keep admin UI available
-      // when token indicates admin (fallback).
+      // when session indicates admin (fallback).
       if (meRes.status && meRes.status !== 403) {
         setAdminError(meRes.error);
       }
       setMe(null);
-      if (tokenRole !== "admin") return;
+      if (role !== "admin") return;
     }
 
     if (meRes.ok) {
       setMe(meRes.data);
     }
 
-    const employeesRes = await apiRequest<EmployeeOut[]>("/admin/funcionarios", { method: "GET", token });
+    const employeesRes = await apiRequest<EmployeeOut[]>("/admin/funcionarios", { method: "GET" });
     if (!employeesRes.ok) {
       setAdminError(employeesRes.error);
       return;
@@ -240,14 +235,14 @@ export default function PontosPage() {
   }
 
   async function loadAdminPontos(employeeId: number) {
-    if (!token) return;
+    if (!authenticated) return;
     setAdminLoading(true);
     setAdminError(null);
     const qs = new URLSearchParams();
     qs.set("user_id", String(employeeId));
     if (adminRangeStart) qs.set("start", adminRangeStart);
     if (adminRangeEnd) qs.set("end", adminRangeEnd);
-    const res = await apiRequest<PontoAdminOut[]>(`/admin/pontos?${qs.toString()}`, { method: "GET", token });
+    const res = await apiRequest<PontoAdminOut[]>(`/admin/pontos?${qs.toString()}`, { method: "GET" });
     setAdminLoading(false);
     if (!res.ok) {
       setAdminError(res.error);
@@ -257,7 +252,7 @@ export default function PontosPage() {
   }
 
   function openAdminCreateModal() {
-    if (!token || selectedEmployeeId === null) return;
+    if (!authenticated || selectedEmployeeId === null) return;
     setAdminModalError(null);
     setAdminModalMode("create");
     setAdminModalTarget(null);
@@ -335,14 +330,13 @@ export default function PontosPage() {
   }
 
   async function applyAdminLocationFromEmployeeLast() {
-    if (!token) return;
+    if (!authenticated) return;
     if (selectedEmployeeId === null) return;
     setAdminModalLocLoading(true);
     setAdminModalError(null);
     try {
       const res = await apiRequest<PontoAdminOut>(`/admin/pontos/last?user_id=${encodeURIComponent(String(selectedEmployeeId))}`, {
         method: "GET",
-        token,
       });
       if (!res.ok) {
         const fallback = getLastEmployeeLocation();
@@ -377,7 +371,7 @@ export default function PontosPage() {
   }
 
   async function submitAdminModal() {
-    if (!token) return;
+    if (!authenticated) return;
     if (selectedEmployeeId === null) return;
 
     setAdminModalSaving(true);
@@ -400,7 +394,6 @@ export default function PontosPage() {
 
         const res = await apiRequest<{ ok: boolean }>(`/admin/pontos/${adminModalTarget.id}`, {
           method: "DELETE",
-          token,
           body: JSON.stringify({ motivo }),
         });
         if (!res.ok) {
@@ -451,7 +444,6 @@ export default function PontosPage() {
       if (adminModalMode === "create") {
         const res = await apiRequest<PontoAdminOut>("/admin/pontos", {
           method: "POST",
-          token,
           body: JSON.stringify(payload),
         });
         if (!res.ok) {
@@ -469,7 +461,6 @@ export default function PontosPage() {
         }
         const res = await apiRequest<PontoAdminOut>(`/admin/pontos/${adminModalTarget.id}`, {
           method: "PUT",
-          token,
           body: JSON.stringify({
             tipo: payload.tipo,
             date: payload.date,
@@ -505,12 +496,11 @@ export default function PontosPage() {
   }
 
   async function loadJornada() {
-    if (!token) return;
+    if (!authenticated) return;
     setJornadaLoading(true);
     setJornadaError(null);
     const res = await apiRequest<JornadaDiaOut>(`/pontos/jornada?date=${encodeURIComponent(jornadaDate)}`, {
       method: "GET",
-      token,
     });
     setJornadaLoading(false);
     if (!res.ok) {
@@ -522,7 +512,7 @@ export default function PontosPage() {
   }
 
   async function loadAdminJornada(employeeId: number) {
-    if (!token) return;
+    if (!authenticated) return;
     setAdminJornadaLoading(true);
     setAdminJornadaError(null);
     const qs = new URLSearchParams();
@@ -530,7 +520,6 @@ export default function PontosPage() {
     qs.set("date", adminJornadaDate);
     const res = await apiRequest<JornadaDiaOut>(`/admin/jornada?${qs.toString()}`, {
       method: "GET",
-      token,
     });
     setAdminJornadaLoading(false);
     if (!res.ok) {
@@ -561,6 +550,111 @@ export default function PontosPage() {
     });
   }
 
+  function geolocationHelpMessage(err: unknown): string {
+    const secureContext = typeof window !== "undefined" ? window.isSecureContext : true;
+    if (!secureContext) {
+      return "Para capturar localização, o navegador exige HTTPS (ou localhost). Acesse via https:// ou use http://localhost:3000.";
+    }
+    if (err && typeof err === "object" && "code" in err) {
+      const code = (err as { code?: unknown }).code;
+      if (code === 1) return "Permissão de localização negada. Ative a localização para este site e tente novamente.";
+      if (code === 2) return "Não foi possível obter a localização (indisponível). Tente novamente.";
+      if (code === 3) return "Tempo esgotado ao obter localização. Tente novamente.";
+    }
+    return "Não foi possível capturar sua localização. Verifique permissões do navegador e conexão.";
+  }
+
+  async function warmupLocation() {
+    if (!authenticated) return;
+    if (isAdmin) return;
+    setPositionError(null);
+    setPositionLoading(true);
+    try {
+      const loc = await getLocation();
+      setPosition(loc);
+    } catch (err) {
+      setPositionError(geolocationHelpMessage(err));
+    } finally {
+      setPositionLoading(false);
+    }
+  }
+
+  async function captureLocationForPunch(): Promise<{ lat: number; lng: number; accuracy_m: number | null }> {
+    const loc = await getLocation();
+    setPosition(loc);
+    return loc;
+  }
+
+  function isDeviceError(status: number | null, message: string | null): boolean {
+    if (!message) return false;
+    if (status === 401 && message.includes("Dispositivo não identificado")) return true;
+    if (status === 401 && message.includes("Dispositivo não cadastrado")) return true;
+    if (status === 403 && message.includes("celular não está cadastrado")) return true;
+    return false;
+  }
+
+  async function pairDevice(rawValue?: string) {
+    setPairingLoading(true);
+    setPairingError(null);
+    setPairingSuccess(null);
+
+    const raw = (rawValue ?? pairingCode).trim();
+    const code = raw.startsWith("PFPAIR:") ? raw.slice("PFPAIR:".length) : raw;
+    if (code.length < 8) {
+      setPairingLoading(false);
+      setPairingError("Informe o código do administrador.");
+      return;
+    }
+
+    const deviceId = getDeviceId();
+    if (!deviceId) {
+      setPairingLoading(false);
+      setPairingError("Não foi possível identificar este dispositivo no navegador.");
+      return;
+    }
+
+    const device_name = typeof navigator === "undefined" ? "Web" : navigator.userAgent;
+    const res = await apiRequest<{ device_secret: string; employee_user_id: number }>("/public/pair-device", {
+      method: "POST",
+      body: JSON.stringify({ code, device_id: deviceId, device_name }),
+    });
+    setPairingLoading(false);
+    if (!res.ok) {
+      setPairingError(res.error);
+      return;
+    }
+
+    setPairingRequired(false);
+    setPairingSuccess("Celular liberado com sucesso. Agora você já pode bater o ponto.");
+    setDevicePaired(true);
+    try {
+      window.localStorage.setItem("pf_device_paired", "1");
+    } catch {
+      // ignore
+    }
+  }
+
+  function clearDevicePairedFlag() {
+    setDevicePaired(false);
+    try {
+      window.localStorage.removeItem("pf_device_paired");
+    } catch {
+      // ignore
+    }
+  }
+
+  async function decodeQrFromFile(file: File): Promise<string> {
+    const url = URL.createObjectURL(file);
+    try {
+      const { BrowserQRCodeReader } = await import("@zxing/browser");
+      const reader = new BrowserQRCodeReader();
+      const res = await reader.decodeFromImageUrl(url);
+      return res.getText();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   function haversineDistanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
     const R = 6371000;
     const toRad = (v: number) => (v * Math.PI) / 180;
@@ -574,10 +668,37 @@ export default function PontosPage() {
 
   useEffect(() => {
     loadConfigLocal();
-    loadPontos();
-    loadMeAndAdminData();
+    let active = true;
+    getSession().then((s) => {
+      if (!active) return;
+      setAuthenticated(s.authenticated);
+      setSessionRole(s.role);
+      if (!s.authenticated) return;
+      loadPontos();
+      loadMeAndAdminData(s.authenticated, s.role);
+      queueMicrotask(() => {
+        if (!active) return;
+        void warmupLocation();
+      });
+    });
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    if (isAdmin) return;
+    try {
+      const paired = window.localStorage.getItem("pf_device_paired") === "1";
+      setDevicePaired(paired);
+      setPairingRequired(!paired);
+    } catch {
+      setDevicePaired(false);
+      setPairingRequired(true);
+    }
+  }, [authenticated, isAdmin]);
 
   useEffect(() => {
     if (employeeCooldownS <= 0) return;
@@ -608,27 +729,27 @@ export default function PontosPage() {
           <div className="rounded-2xl border border-zinc-200 bg-white p-6">
             <div className="text-sm font-semibold">Bater ponto</div>
             <div className="mt-1 text-sm text-zinc-600">
-              Toque em "Bater ponto agora" para registrar com sua localização atual.
+              Toque em &quot;Bater ponto agora&quot; para registrar com sua localização atual.
             </div>
 
             <div className="mt-5 flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={sending || !token || employeeCooldownS > 0}
+                  disabled={sending || !authenticated || employeeCooldownS > 0 || !devicePaired}
                   onClick={async () => {
                     setSending(true);
                     setError(null);
                     setErrorStatus(null);
                     setSuccess(null);
+                    setPositionError(null);
+                    setPairingError(null);
 
                     try {
-                      const loc = await getLocation();
-                      setPosition(loc);
+                      const loc = await captureLocationForPunch();
 
                       const res = await apiRequest<PontoOut>("/pontos/auto", {
                         method: "POST",
-                        token,
                         body: JSON.stringify({
                           lat: loc.lat,
                           lng: loc.lng,
@@ -639,6 +760,10 @@ export default function PontosPage() {
                       if (!res.ok) {
                         setError(res.error);
                         setErrorStatus(res.status ?? null);
+                        if (!isAdmin && isDeviceError(res.status ?? null, res.error)) {
+                          setPairingRequired(true);
+                          clearDevicePairedFlag();
+                        }
                         if (res.status === 409) {
                           setEmployeeCooldownS(15);
                         }
@@ -649,8 +774,9 @@ export default function PontosPage() {
                       setEmployeeCooldownS(15);
                       await loadPontos();
                       await loadJornada();
-                    } catch {
-                      setError("Falha ao registrar ponto. Verifique sua conexão e permissões de localização.");
+                    } catch (err) {
+                      setPositionError(geolocationHelpMessage(err));
+                      setError("Falha ao registrar ponto.");
                     } finally {
                       setSending(false);
                     }
@@ -689,16 +815,22 @@ export default function PontosPage() {
                 </button>
               </div>
 
-              {!token ? <div className="text-xs text-zinc-600">Você precisa estar logado para bater ponto.</div> : null}
+              {!authenticated ? <div className="text-xs text-zinc-600">Você precisa estar logado para bater ponto.</div> : null}
+
+              {authenticated ? (
+                <div className="text-xs text-zinc-600">
+                  {positionLoading ? "Capturando sua localização..." : null}
+                  {!positionLoading && positionError ? positionError : null}
+                  {!positionLoading && !positionError && !position ? "Localização ainda não capturada." : null}
+                </div>
+              ) : null}
 
               {position ? (
                 <div className="rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-700 ring-1 ring-zinc-200">
                   lat={position.lat.toFixed(6)} lng={position.lng.toFixed(6)}
                   {typeof position.accuracy_m === "number" ? ` (±${Math.round(position.accuracy_m)}m)` : ""}
                 </div>
-              ) : (
-                <div className="text-xs text-zinc-600">Localização ainda não capturada.</div>
-              )}
+              ) : null}
 
               {configLocal ? (
                 <div className="text-xs text-zinc-600">
@@ -718,6 +850,68 @@ export default function PontosPage() {
                 ) : (
                   <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</div>
                 )
+              ) : null}
+
+              {pairingSuccess ? (
+                <div className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-emerald-200">
+                  {pairingSuccess}
+                </div>
+              ) : null}
+
+              {pairingRequired ? (
+                <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                  <div className="text-sm font-semibold">Celular não liberado</div>
+                  <div className="mt-1 text-sm text-zinc-600">
+                    Para bater o ponto, seu celular precisa ser liberado pelo administrador.
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2">
+                    <label className="text-xs font-semibold text-zinc-700">Ler QR Code</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setQrLoading(true);
+                        setPairingError(null);
+                        setPairingSuccess(null);
+                        try {
+                          const text = await decodeQrFromFile(file);
+                          setPairingCode(text);
+                          await pairDevice(text);
+                        } catch {
+                          setPairingError("Não foi possível ler o QR Code. Tente uma foto mais nítida ou use o código manual.");
+                        } finally {
+                          setQrLoading(false);
+                          e.target.value = "";
+                        }
+                      }}
+                      className="block w-full text-sm"
+                    />
+                    {qrLoading ? <div className="text-xs text-zinc-600">Lendo QR Code...</div> : null}
+
+                    <label className="text-xs font-semibold text-zinc-700">Código do administrador</label>
+                    <input
+                      value={pairingCode}
+                      onChange={(e) => setPairingCode(e.target.value)}
+                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Ex: AbCdEfGh..."
+                      autoComplete="one-time-code"
+                    />
+                    {pairingError ? (
+                      <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{pairingError}</div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => pairDevice()}
+                      disabled={pairingLoading}
+                      className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
+                    >
+                      {pairingLoading ? "Ativando..." : "Ativar meu celular"}
+                    </button>
+                  </div>
+                </div>
               ) : null}
               {success ? (
                 <div className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-emerald-200">
@@ -861,7 +1055,7 @@ export default function PontosPage() {
                 <button
                   type="button"
                   onClick={() => openAdminCreateModal()}
-                  disabled={!token || selectedEmployeeId === null}
+                  disabled={!authenticated || selectedEmployeeId === null}
                   className="h-10 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
                 >
                   Adicionar ponto

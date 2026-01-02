@@ -47,6 +47,12 @@ class DevicePairingCodeOut(BaseModel):
     expires_at: datetime
 
 
+class EmployeeDeviceOut(BaseModel):
+    device_id: str
+    device_name: str | None
+    created_at: datetime
+
+
 class PairDeviceRequest(BaseModel):
     code: str = Field(min_length=8)
     device_id: str = Field(min_length=8, max_length=128)

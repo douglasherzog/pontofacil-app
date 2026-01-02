@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { apiRequest } from "@/lib/api";
 import { formatDateTimeSP } from "@/lib/dateFormat";
-import { getToken } from "@/lib/tokenStorage";
+import { getSession } from "@/lib/session";
 
 type EmployeeOut = {
   id: number;
@@ -43,7 +43,7 @@ function actionLabel(a: PontoAdminAuditAction): string {
 }
 
 export default function AuditoriaPage() {
-  const token = useMemo(() => getToken() ?? undefined, []);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -72,9 +72,9 @@ export default function AuditoriaPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<PontoAdminAuditOut | null>(null);
 
-  async function loadEmployees() {
-    if (!token) return;
-    const res = await apiRequest<EmployeeOut[]>("/admin/funcionarios", { method: "GET", token });
+  async function loadEmployees(admin: boolean) {
+    if (!admin) return;
+    const res = await apiRequest<EmployeeOut[]>("/admin/funcionarios", { method: "GET" });
     if (!res.ok) {
       setError(res.error);
       return;
@@ -82,8 +82,8 @@ export default function AuditoriaPage() {
     setEmployees(res.data);
   }
 
-  async function loadAudit(mode: "reset" | "more" = "reset") {
-    if (!token) return;
+  async function loadAudit(admin: boolean, mode: "reset" | "more" = "reset") {
+    if (!admin) return;
     setLoading(true);
     setError(null);
 
@@ -100,7 +100,7 @@ export default function AuditoriaPage() {
       qs.set("cursor", nextCursor);
     }
 
-    const res = await apiRequest<PontoAdminAuditPageOut>(`/admin/pontos/audit?${qs.toString()}`, { method: "GET", token });
+    const res = await apiRequest<PontoAdminAuditPageOut>(`/admin/pontos/audit?${qs.toString()}`, { method: "GET" });
     setLoading(false);
     if (!res.ok) {
       setError(res.error);
@@ -116,8 +116,13 @@ export default function AuditoriaPage() {
   }
 
   useEffect(() => {
-    loadEmployees();
-    loadAudit("reset");
+    getSession().then((s) => {
+      const admin = s.role === "admin";
+      setIsAdmin(admin);
+      if (!admin) return;
+      loadEmployees(admin);
+      loadAudit(admin, "reset");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -215,16 +220,16 @@ export default function AuditoriaPage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => loadAudit("reset")}
-                disabled={!token || loading}
+                onClick={() => loadAudit(isAdmin, "reset")}
+                disabled={!isAdmin || loading}
                 className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
               >
                 {loading ? "Carregando..." : "Atualizar"}
               </button>
               <button
                 type="button"
-                onClick={() => loadAudit("more")}
-                disabled={!token || loading || !nextCursor}
+                onClick={() => loadAudit(isAdmin, "more")}
+                disabled={!isAdmin || loading || !nextCursor}
                 className="h-11 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
               >
                 Carregar mais
@@ -246,7 +251,7 @@ export default function AuditoriaPage() {
               >
                 Limpar filtros
               </button>
-              {!token ? <div className="text-xs text-zinc-600">Você precisa estar logado como admin.</div> : null}
+              {!isAdmin ? <div className="text-xs text-zinc-600">Você precisa estar logado como admin.</div> : null}
             </div>
 
             {error ? <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</div> : null}

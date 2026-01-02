@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/usuarios", "/pontos", "/relatorios", "/configuracoes"]; // simple allowlist
+const PROTECTED_PREFIXES = ["/dashboard", "/usuarios", "/pontos", "/auditoria", "/relatorios", "/configuracoes"]; // simple allowlist
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -19,5 +19,5 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/usuarios/:path*", "/pontos/:path*", "/relatorios/:path*", "/configuracoes/:path*"],
+  matcher: ["/dashboard/:path*", "/usuarios/:path*", "/pontos/:path*", "/auditoria/:path*", "/relatorios/:path*", "/configuracoes/:path*"],
 };

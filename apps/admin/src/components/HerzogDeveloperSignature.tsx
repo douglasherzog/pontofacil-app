@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export function HerzogDeveloperSignature({
   className,
@@ -14,13 +15,7 @@ export function HerzogDeveloperSignature({
   return (
     <div className={`flex items-center gap-2 text-xs ${baseText} ${className ?? ""}`}>
       <span className={"opacity-90 " + secondaryText}>Desenvolvido por</span>
-      <img
-        src="/herzog-developer-icon.svg"
-        alt="Herzog Developer"
-        width={18}
-        height={18}
-        style={{ display: "block" }}
-      />
+      <Image src="/herzog-developer-icon.svg" alt="Herzog Developer" width={18} height={18} />
       <Link
         href="https://github.com/douglasherzog"
         target="_blank"

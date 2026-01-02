@@ -36,6 +36,7 @@ from app.schemas import (
     EmployeeAuthPolicyOut,
     EmployeeAuthPolicyUpsert,
     DevicePairingCodeOut,
+    EmployeeDeviceOut,
     EmployeeOut,
     JornadaValidationConfigOut,
     JornadaValidationConfigUpsert,
@@ -374,16 +375,20 @@ def create_device_pairing_code(
     if not employee or employee.role != UserRole.employee:
         raise HTTPException(status_code=404, detail="Funcionário não encontrado")
 
-    # Revoke any existing active device so only the new pairing can be used.
-    now = datetime.utcnow()
-    active_devices = (
+    active_device = (
         db.query(EmployeeDevice)
         .filter(EmployeeDevice.employee_user_id == employee.id)
         .filter(EmployeeDevice.revoked_at.is_(None))
-        .all()
+        .order_by(EmployeeDevice.id.desc())
+        .first()
     )
-    for d in active_devices:
-        d.revoked_at = now
+    if active_device:
+        raise HTTPException(
+            status_code=409,
+            detail="Funcionário já possui um dispositivo ativo. Revogue o dispositivo atual antes de cadastrar um novo.",
+        )
+
+    now = datetime.utcnow()
 
     code = secrets.token_urlsafe(9)
     expires_at = now + timedelta(minutes=10)
@@ -396,6 +401,58 @@ def create_device_pairing_code(
     db.add(row)
     db.commit()
     return DevicePairingCodeOut(code=code, expires_at=_utc_naive_to_sp(expires_at))
+
+
+@router.get("/funcionarios/{employee_user_id}/device", response_model=EmployeeDeviceOut | None)
+def get_employee_active_device(
+    employee_user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    employee = db.get(User, employee_user_id)
+    if not employee or employee.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    row = (
+        db.query(EmployeeDevice)
+        .filter(EmployeeDevice.employee_user_id == employee.id)
+        .filter(EmployeeDevice.revoked_at.is_(None))
+        .order_by(EmployeeDevice.id.desc())
+        .first()
+    )
+    if not row:
+        return None
+
+    return EmployeeDeviceOut(
+        device_id=row.device_id,
+        device_name=row.device_name,
+        created_at=_utc_naive_to_sp(row.created_at),
+    )
+
+
+@router.post("/funcionarios/{employee_user_id}/device/revoke", response_model=dict)
+def revoke_employee_active_device(
+    employee_user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    employee = db.get(User, employee_user_id)
+    if not employee or employee.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    row = (
+        db.query(EmployeeDevice)
+        .filter(EmployeeDevice.employee_user_id == employee.id)
+        .filter(EmployeeDevice.revoked_at.is_(None))
+        .order_by(EmployeeDevice.id.desc())
+        .first()
+    )
+    if not row:
+        return {"ok": True, "revoked": False}
+
+    row.revoked_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "revoked": True}
 
 
 @router.put("/config-local", response_model=ConfigLocalOut)

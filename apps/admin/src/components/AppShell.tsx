@@ -4,8 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { clearToken } from "@/lib/tokenStorage";
-import { getToken } from "@/lib/tokenStorage";
+import { getSession } from "@/lib/session";
 import { HerzogDeveloperSignature } from "@/components/HerzogDeveloperSignature";
 
 type NavItem = { href: string; label: string };
@@ -21,23 +20,11 @@ const NAV: NavItem[] = [
   { href: "/configuracoes", label: "Configurações" },
 ];
 
-function base64UrlDecodeToString(value: string): string {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  return atob(padded);
-}
-
-function getRoleFromToken(token: string | undefined): UserRole | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-
+async function logout(): Promise<void> {
   try {
-    const json = base64UrlDecodeToString(parts[1]);
-    const payload = JSON.parse(json) as { role?: unknown };
-    return payload.role === "admin" || payload.role === "employee" ? payload.role : null;
+    await fetch("/api/auth/logout", { method: "POST", cache: "no-store" });
   } catch {
-    return null;
+    // ignore
   }
 }
 
@@ -45,18 +32,26 @@ export function AppShell({ title, children }: { title: string; children: React.R
   const pathname = usePathname();
   const router = useRouter();
 
-  const [hydrated, setHydrated] = useState(false);
+  const [hydrated] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
-    setHydrated(true);
-    setRole(getRoleFromToken(getToken() ?? undefined));
+    getSession().then((s) => setRole(s.role));
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (role !== "employee") return;
+    const allowed = pathname === "/pontos" || pathname.startsWith("/pontos/");
+    if (!allowed) {
+      router.replace("/pontos");
+    }
+  }, [hydrated, pathname, role, router]);
 
   const nav = useMemo(() => {
     const effectiveRole: UserRole | null = hydrated ? role : null;
     const isAdmin = effectiveRole === "admin";
-    return isAdmin ? NAV : NAV.filter((i) => i.href === "/dashboard" || i.href === "/pontos");
+    return isAdmin ? NAV : NAV.filter((i) => i.href === "/pontos");
   }, [hydrated, role]);
 
   return (
@@ -103,8 +98,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
           <button
             type="button"
             onClick={() => {
-              clearToken();
-              router.replace("/login");
+              logout().finally(() => router.replace("/login"));
             }}
             className="mt-6 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
           >
