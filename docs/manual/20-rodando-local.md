@@ -12,21 +12,21 @@ Passos (PowerShell):
 
 2. Instalar dependências:
 
-- `.\.venv\Scripts\python -m pip install -r requirements.txt`
+- `.\.venv\Scripts\python -m pip install -r apps/api/requirements.txt`
 
 3. Subir servidor:
 
-- `.\.venv\Scripts\python -m uvicorn main:app --reload --port 8000`
+- `.\.venv\Scripts\python -m uvicorn main:app --reload --port 8011`
 
 Acesse:
 
-- `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8011/docs`
 
 ## Admin (Next.js)
 
 O Admin fica em `apps/admin`.
 
-- `pnpm -C apps/admin dev`
+- `pnpm --filter admin dev`
 
 Acesse:
 
@@ -34,4 +34,6 @@ Acesse:
 
 O login padrão (dev) é:
 
-- `admin@local` / `admin`
+- Email/senha definidos em `apps/api/app/core/config.py` (ou via env `PONTOFACIL_ADMIN_EMAIL` / `PONTOFACIL_ADMIN_PASSWORD`).
+
+Observação: o Admin usa cookie HttpOnly + proxy interno (`/api/proxy/...`).
