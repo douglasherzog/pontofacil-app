@@ -38,6 +38,7 @@ from app.schemas import (
     DevicePairingCodeOut,
     EmployeeDeviceOut,
     EmployeeOut,
+    EmployeeUpdate,
     JornadaValidationConfigOut,
     JornadaValidationConfigUpsert,
     JornadaDiaAdminOut,
@@ -285,7 +286,7 @@ def list_employees(
     )
 
     return [
-        EmployeeOut(id=user.id, email=user.email, nome=profile.nome, is_active=user.is_active)
+        EmployeeOut(id=user.id, email=user.email, nome=profile.nome, genero=profile.genero, is_active=user.is_active)
         for user, profile in rows
     ]
 
@@ -304,12 +305,73 @@ def create_employee(
     db.add(user)
     db.flush()
 
-    profile = EmployeeProfile(user_id=user.id, nome=payload.nome)
+    profile = EmployeeProfile(user_id=user.id, nome=payload.nome, genero=payload.genero)
     db.add(profile)
     db.commit()
     db.refresh(user)
 
-    return EmployeeOut(id=user.id, email=user.email, nome=profile.nome, is_active=user.is_active)
+    return EmployeeOut(id=user.id, email=user.email, nome=profile.nome, genero=profile.genero, is_active=user.is_active)
+
+
+@router.put("/funcionarios/{employee_user_id}", response_model=EmployeeOut)
+def update_employee(
+    employee_user_id: int,
+    payload: EmployeeUpdate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    user = db.get(User, employee_user_id)
+    if not user or user.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    existing = db.query(User).filter(User.email == payload.email).filter(User.id != user.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
+
+    user.email = payload.email
+    if payload.password:
+        user.password_hash = hash_password(payload.password)
+
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    if not profile:
+        profile = EmployeeProfile(user_id=user.id, nome=payload.nome, genero=payload.genero)
+        db.add(profile)
+    else:
+        profile.nome = payload.nome
+        profile.genero = payload.genero
+
+    db.commit()
+    db.refresh(user)
+    return EmployeeOut(id=user.id, email=user.email, nome=profile.nome, genero=profile.genero, is_active=user.is_active)
+
+
+@router.delete("/funcionarios/{employee_user_id}", response_model=dict)
+def deactivate_employee(
+    employee_user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    user = db.get(User, employee_user_id)
+    if not user or user.role != UserRole.employee:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado")
+
+    if not user.is_active:
+        return {"ok": True, "deactivated": False}
+
+    user.is_active = False
+
+    now = datetime.utcnow()
+    active_devices = (
+        db.query(EmployeeDevice)
+        .filter(EmployeeDevice.employee_user_id == user.id)
+        .filter(EmployeeDevice.revoked_at.is_(None))
+        .all()
+    )
+    for d in active_devices:
+        d.revoked_at = now
+
+    db.commit()
+    return {"ok": True, "deactivated": True}
 
 
 def _get_employee_policy(db: Session, employee_user_id: int) -> EmployeeAuthPolicy:

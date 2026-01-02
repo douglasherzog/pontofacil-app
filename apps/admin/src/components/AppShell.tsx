@@ -34,10 +34,38 @@ export function AppShell({ title, children }: { title: string; children: React.R
 
   const [hydrated] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
+  const [employeeName, setEmployeeName] = useState<string | null>(null);
+  const [employeeGenero, setEmployeeGenero] = useState<"homem" | "mulher" | null>(null);
 
   useEffect(() => {
     getSession().then((s) => setRole(s.role));
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (role !== "employee") return;
+
+    let active = true;
+    fetch("/api/proxy/me", { cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return (await r.json()) as { nome?: unknown; genero?: unknown };
+      })
+      .then((data) => {
+        if (!active) return;
+        setEmployeeName(typeof data?.nome === "string" ? data.nome : null);
+        setEmployeeGenero(data?.genero === "homem" || data?.genero === "mulher" ? data.genero : null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setEmployeeName(null);
+        setEmployeeGenero(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [hydrated, role]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -54,10 +82,18 @@ export function AppShell({ title, children }: { title: string; children: React.R
     return isAdmin ? NAV : NAV.filter((i) => i.href === "/pontos");
   }, [hydrated, role]);
 
+  const isEmployee = hydrated && role === "employee";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-fuchsia-50 text-zinc-900">
-      <div className="mx-auto grid min-h-screen w-full max-w-6xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-[260px_1fr]">
-        <aside className="rounded-2xl border border-zinc-200/70 bg-white/70 p-4 shadow-sm backdrop-blur">
+      <div
+        className={
+          "mx-auto grid min-h-screen w-full max-w-6xl grid-cols-1 gap-6 px-4 py-6 " +
+          (isEmployee ? "" : "md:grid-cols-[260px_1fr]")
+        }
+      >
+        {!isEmployee ? (
+          <aside className="rounded-2xl border border-zinc-200/70 bg-white/70 p-4 shadow-sm backdrop-blur">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold tracking-tight">PontoFácil</div>
             {!hydrated ? (
@@ -108,15 +144,73 @@ export function AppShell({ title, children }: { title: string; children: React.R
           <div className="mt-4">
             <HerzogDeveloperSignature />
           </div>
-        </aside>
+          </aside>
+        ) : null}
 
         <main className="rounded-2xl border border-zinc-200/70 bg-white/70 p-6 shadow-sm backdrop-blur">
-          <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-            <div className="text-xs text-zinc-600">Usabilidade primeiro. Dados oficiais: API FastAPI.</div>
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className={isEmployee ? "text-2xl font-extrabold tracking-tight" : "text-xl font-semibold tracking-tight"}>
+                  {isEmployee ? (
+                    <span className="bg-gradient-to-r from-indigo-700 to-fuchsia-700 bg-clip-text text-transparent">
+                      Sistema Fácil de Ponto
+                    </span>
+                  ) : (
+                    title
+                  )}
+                </h1>
+                {!hydrated ? (
+                  <div className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[10px] font-semibold text-zinc-700">
+                    ...
+                  </div>
+                ) : role === "admin" ? (
+                  <div className="rounded-full bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-2 py-1 text-[10px] font-semibold text-white">
+                    Admin
+                  </div>
+                ) : null}
+              </div>
+
+              {isEmployee ? (
+                <div className="text-base font-semibold text-zinc-800">
+                  <span>Seja {employeeGenero === "mulher" ? "bem vinda" : "bem vindo"}</span>{" "}
+                  {employeeName ? (
+                    <span className="bg-gradient-to-r from-indigo-700 to-fuchsia-700 bg-clip-text text-transparent">
+                      {employeeName}
+                    </span>
+                  ) : null}
+                  <span>{employeeName ? ", " : "! "}tu é uma benção!</span>
+                </div>
+              ) : null}
+
+              {!isEmployee ? (
+                <div className="text-sm font-medium text-zinc-600/90">
+                  <span className="bg-gradient-to-r from-indigo-700 to-fuchsia-700 bg-clip-text text-transparent">Sistema</span>{" "}
+                  <span className="text-zinc-600/90">Fácil de Ponto.</span>
+                </div>
+              ) : null}
+            </div>
+
+            {isEmployee ? (
+              <button
+                type="button"
+                onClick={() => {
+                  logout().finally(() => router.replace("/login"));
+                }}
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Sair
+              </button>
+            ) : null}
           </header>
 
           <div className="mt-6">{children}</div>
+
+          {isEmployee ? (
+            <div className="mt-8">
+              <HerzogDeveloperSignature />
+            </div>
+          ) : null}
         </main>
       </div>
     </div>

@@ -10,6 +10,8 @@ from app.db.base import Base
 from app.db.session import engine, SessionLocal
 from app.models import User, UserRole
 
+from sqlalchemy import text
+
 app = FastAPI(title="PontoFacil API")
 
 app.add_middleware(
@@ -54,6 +56,11 @@ def ensure_admin(db: Session) -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE employee_profiles ADD COLUMN genero VARCHAR(16)"))
+    except Exception:
+        pass
     db = SessionLocal()
     try:
         ensure_admin(db)

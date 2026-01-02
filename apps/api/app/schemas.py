@@ -18,19 +18,30 @@ class UserMe(BaseModel):
     id: int
     email: EmailStr
     role: Literal["admin", "employee"]
+    nome: str | None = None
+    genero: Literal["homem", "mulher"] | None = None
 
 
 class EmployeeCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=4)
     nome: str = Field(min_length=1)
+    genero: Literal["homem", "mulher"]
 
 
 class EmployeeOut(BaseModel):
     id: int
     email: EmailStr
     nome: str
+    genero: Literal["homem", "mulher"] | None = None
     is_active: bool
+
+
+class EmployeeUpdate(BaseModel):
+    email: EmailStr
+    nome: str = Field(min_length=1)
+    genero: Literal["homem", "mulher"]
+    password: str | None = Field(default=None, min_length=4)
 
 
 class EmployeeAuthPolicyUpsert(BaseModel):

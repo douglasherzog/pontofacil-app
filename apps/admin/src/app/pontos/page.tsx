@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { apiRequest, getDeviceId } from "@/lib/api";
@@ -121,6 +121,10 @@ export default function PontosPage() {
   const [pairingSuccess, setPairingSuccess] = useState<string | null>(null);
   const [devicePaired, setDevicePaired] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
+  const [qrCameraOpen, setQrCameraOpen] = useState(false);
+  const [qrCameraError, setQrCameraError] = useState<string | null>(null);
+  const qrVideoRef = useRef<HTMLVideoElement | null>(null);
+  const qrScannerControlsRef = useRef<{ stop: () => void } | null>(null);
 
   const [employeeCooldownS, setEmployeeCooldownS] = useState<number>(0);
 
@@ -178,6 +182,60 @@ export default function PontosPage() {
   const [positionLoading, setPositionLoading] = useState(false);
   const [positionError, setPositionError] = useState<string | null>(null);
   const [configLocal, setConfigLocal] = useState<ConfigLocalOut | null>(null);
+
+  function stopQrCamera() {
+    try {
+      qrScannerControlsRef.current?.stop();
+    } catch {
+      // ignore
+    }
+    qrScannerControlsRef.current = null;
+    setQrCameraOpen(false);
+  }
+
+  async function startQrCamera() {
+    setQrCameraError(null);
+
+    const canUseCamera = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+    if (!canUseCamera) {
+      setQrCameraError("Seu navegador não suporta acesso à câmera.");
+      return;
+    }
+
+    const isSecure = typeof window !== "undefined" && (window.isSecureContext || window.location.hostname === "localhost");
+    if (!isSecure) {
+      setQrCameraError("A câmera só funciona em HTTPS (ou localhost). Use upload do QR ou digite o código.");
+      return;
+    }
+
+    setQrCameraOpen(true);
+
+    const { BrowserQRCodeReader } = await import("@zxing/browser");
+    const reader = new BrowserQRCodeReader();
+    const videoEl = qrVideoRef.current;
+    if (!videoEl) {
+      setQrCameraError("Não foi possível inicializar o vídeo da câmera.");
+      setQrCameraOpen(false);
+      return;
+    }
+
+    // Stop any previous session
+    stopQrCamera();
+    setQrCameraOpen(true);
+
+    const controls = await reader.decodeFromVideoDevice(undefined, videoEl, async (result, _error, c) => {
+      if (!result) return;
+
+      const text = result.getText();
+      setPairingCode(text);
+      c.stop();
+      qrScannerControlsRef.current = null;
+      setQrCameraOpen(false);
+      await pairDevice(text);
+    });
+
+    qrScannerControlsRef.current = controls;
+  }
 
   async function loadPontos() {
     setLoading(true);
@@ -701,6 +759,23 @@ export default function PontosPage() {
   }, [authenticated, isAdmin]);
 
   useEffect(() => {
+    if (pairingRequired) return;
+    stopQrCamera();
+    setQrCameraError(null);
+  }, [pairingRequired]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        qrScannerControlsRef.current?.stop();
+      } catch {
+        // ignore
+      }
+      qrScannerControlsRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (employeeCooldownS <= 0) return;
     const t = setInterval(() => {
       setEmployeeCooldownS((v) => Math.max(0, v - 1));
@@ -866,6 +941,43 @@ export default function PontosPage() {
                   </div>
 
                   <div className="mt-4 flex flex-col gap-2">
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                      <div className="text-xs font-semibold text-zinc-700">Ler QR Code com câmera</div>
+                      <div className="mt-1 text-xs text-zinc-600">
+                        Em iPhone, a câmera só funciona em HTTPS (ou localhost). Se não funcionar, use upload da imagem do QR.
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setPairingError(null);
+                            setPairingSuccess(null);
+                            try {
+                              if (qrCameraOpen) {
+                                stopQrCamera();
+                                return;
+                              }
+                              await startQrCamera();
+                            } catch {
+                              setQrCameraError("Não foi possível iniciar a câmera. Use upload do QR ou digite o código.");
+                            }
+                          }}
+                          disabled={pairingLoading}
+                          className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-60"
+                        >
+                          {qrCameraOpen ? "Parar câmera" : "Usar câmera"}
+                        </button>
+                      </div>
+
+                      {qrCameraError ? <div className="mt-2 text-xs text-rose-700">{qrCameraError}</div> : null}
+
+                      {qrCameraOpen ? (
+                        <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-black">
+                          <video ref={qrVideoRef} className="h-56 w-full object-cover" muted playsInline />
+                        </div>
+                      ) : null}
+                    </div>
+
                     <label className="text-xs font-semibold text-zinc-700">Ler QR Code</label>
                     <input
                       type="file"

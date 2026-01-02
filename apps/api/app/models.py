@@ -30,6 +30,7 @@ class EmployeeProfile(Base):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     nome: Mapped[str] = mapped_column(String(255))
+    genero: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="employee_profile")
 

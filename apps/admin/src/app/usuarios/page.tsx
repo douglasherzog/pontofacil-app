@@ -11,8 +11,11 @@ type EmployeeOut = {
   id: number;
   email: string;
   nome: string;
+  genero: EmployeeGenero;
   is_active: boolean;
 };
+
+type EmployeeGenero = "homem" | "mulher";
 
 type EmployeeDeviceOut = {
   device_id: string;
@@ -26,6 +29,20 @@ export default function UsuariosPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editEmployee, setEditEmployee] = useState<EmployeeOut | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editGenero, setEditGenero] = useState<EmployeeGenero>("homem");
+  const [editPassword, setEditPassword] = useState("");
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteEmployee, setDeleteEmployee] = useState<EmployeeOut | null>(null);
 
   const [pairingOpen, setPairingOpen] = useState(false);
   const [pairingLoading, setPairingLoading] = useState(false);
@@ -42,6 +59,23 @@ export default function UsuariosPage() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [genero, setGenero] = useState<EmployeeGenero>("homem");
+
+  function openEdit(employee: EmployeeOut) {
+    setEditEmployee(employee);
+    setEditNome(employee.nome);
+    setEditEmail(employee.email);
+    setEditGenero(employee.genero);
+    setEditPassword("");
+    setEditError(null);
+    setEditOpen(true);
+  }
+
+  function openDelete(employee: EmployeeOut) {
+    setDeleteEmployee(employee);
+    setDeleteError(null);
+    setDeleteOpen(true);
+  }
 
   async function openPairing(employee: EmployeeOut) {
     setPairingEmployee(employee);
@@ -166,7 +200,7 @@ export default function UsuariosPage() {
 
               const res = await apiRequest<EmployeeOut>("/admin/funcionarios", {
                 method: "POST",
-                body: JSON.stringify({ nome, email, password }),
+                body: JSON.stringify({ nome, email, password, genero }),
               });
 
               setCreating(false);
@@ -179,6 +213,7 @@ export default function UsuariosPage() {
               setNome("");
               setEmail("");
               setPassword("");
+              setGenero("homem");
               setSuccess(`Funcionário criado: ${res.data.email}`);
               await load(isAdmin);
             }}
@@ -215,6 +250,18 @@ export default function UsuariosPage() {
                 placeholder="mínimo 4 caracteres"
                 required
               />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-zinc-700">Gênero</label>
+              <select
+                value={genero}
+                onChange={(e) => setGenero(e.target.value as EmployeeGenero)}
+                className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+              >
+                <option value="homem">Homem</option>
+                <option value="mulher">Mulher</option>
+              </select>
             </div>
 
             {error ? (
@@ -262,20 +309,21 @@ export default function UsuariosPage() {
                   <tr>
                     <th className="px-3 py-2">Nome</th>
                     <th className="px-3 py-2">E-mail</th>
+                    <th className="px-3 py-2">Gênero</th>
                     <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Celular</th>
+                    <th className="px-3 py-2">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-4 text-zinc-600">
+                      <td colSpan={5} className="px-3 py-4 text-zinc-600">
                         Carregando...
                       </td>
                     </tr>
                   ) : items.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-4 text-zinc-600">
+                      <td colSpan={5} className="px-3 py-4 text-zinc-600">
                         Nenhum funcionário ainda.
                       </td>
                     </tr>
@@ -284,6 +332,7 @@ export default function UsuariosPage() {
                       <tr key={u.id} className="border-t border-zinc-100">
                         <td className="px-3 py-2 font-medium text-zinc-900">{u.nome}</td>
                         <td className="px-3 py-2 text-zinc-700">{u.email}</td>
+                        <td className="px-3 py-2 text-zinc-700">{u.genero === "mulher" ? "Mulher" : "Homem"}</td>
                         <td className="px-3 py-2">
                           <span
                             className={
@@ -297,14 +346,32 @@ export default function UsuariosPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            disabled={!isAdmin}
-                            onClick={() => openPairing(u)}
-                            className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                          >
-                            Dispositivo
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={!isAdmin}
+                              onClick={() => openPairing(u)}
+                              className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                            >
+                              Dispositivo
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!isAdmin}
+                              onClick={() => openEdit(u)}
+                              className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!isAdmin}
+                              onClick={() => openDelete(u)}
+                              className="h-9 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                            >
+                              Excluir
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -315,6 +382,162 @@ export default function UsuariosPage() {
           </div>
         </div>
       </div>
+
+      {editOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold">Editar funcionário</div>
+                <div className="mt-1 text-sm text-zinc-600">Atualize os dados do funcionário.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <form
+              className="mt-4 flex flex-col gap-3"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!editEmployee) return;
+                setEditLoading(true);
+                setEditError(null);
+
+                const payload = {
+                  nome: editNome,
+                  email: editEmail,
+                  genero: editGenero,
+                  password: editPassword.trim() ? editPassword : null,
+                };
+                const res = await apiRequest<EmployeeOut>(`/admin/funcionarios/${encodeURIComponent(String(editEmployee.id))}`, {
+                  method: "PUT",
+                  body: JSON.stringify(payload),
+                });
+                setEditLoading(false);
+                if (!res.ok) {
+                  setEditError(res.error);
+                  return;
+                }
+                setEditOpen(false);
+                setSuccess("Funcionário atualizado.");
+                await load(isAdmin);
+              }}
+            >
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-zinc-700">Nome</label>
+                <input
+                  value={editNome}
+                  onChange={(e) => setEditNome(e.target.value)}
+                  className="h-11 rounded-xl border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-zinc-700">E-mail</label>
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="h-11 rounded-xl border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-zinc-700">Gênero</label>
+                <select
+                  value={editGenero}
+                  onChange={(e) => setEditGenero(e.target.value as EmployeeGenero)}
+                  className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  <option value="homem">Homem</option>
+                  <option value="mulher">Mulher</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-zinc-700">Nova senha (opcional)</label>
+                <input
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  type="password"
+                  className="h-11 rounded-xl border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="deixe em branco para manter"
+                />
+              </div>
+              {editError ? (
+                <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{editError}</div>
+              ) : null}
+              <button
+                type="submit"
+                disabled={editLoading}
+                className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 px-4 text-sm font-semibold text-white shadow disabled:opacity-60"
+              >
+                {editLoading ? "Salvando..." : "Salvar"}
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold">Excluir funcionário</div>
+                <div className="mt-1 text-sm text-zinc-600">
+                  Isso irá desativar o funcionário e revogar o dispositivo ativo. Os pontos já registrados serão mantidos.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+              <div className="text-xs font-semibold text-zinc-600">FUNCIONÁRIO</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-900">{deleteEmployee?.nome}</div>
+              <div className="text-sm text-zinc-700">{deleteEmployee?.email}</div>
+            </div>
+
+            {deleteError ? (
+              <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{deleteError}</div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (!deleteEmployee) return;
+                setDeleteLoading(true);
+                setDeleteError(null);
+                const res = await apiRequest<{ ok: boolean; deactivated: boolean }>(
+                  `/admin/funcionarios/${encodeURIComponent(String(deleteEmployee.id))}`,
+                  { method: "DELETE" }
+                );
+                setDeleteLoading(false);
+                if (!res.ok) {
+                  setDeleteError(res.error);
+                  return;
+                }
+                setDeleteOpen(false);
+                setSuccess("Funcionário desativado.");
+                await load(isAdmin);
+              }}
+              disabled={deleteLoading}
+              className="mt-4 h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+            >
+              {deleteLoading ? "Excluindo..." : "Confirmar exclusão"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {pairingOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

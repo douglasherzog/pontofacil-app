@@ -6,10 +6,11 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
 from app.core.security import hash_password, verify_password
 from app.db.deps import get_db
 from app.models import ConfigLocal, DevicePairingCode, EmployeeDevice, User, UserRole
-from app.schemas import ConfigLocalOut, PairDeviceRequest, PairDeviceResponse
+from app.schemas import ConfigLocalOut, PairDeviceRequest, PairDeviceResponse, UserMe
 
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
@@ -37,6 +38,16 @@ def get_config_local(db: Session = Depends(get_db)):
         raio_m=row.raio_m,
         updated_at=_utc_naive_to_sp(row.updated_at),
     )
+
+
+@router.get("/me", response_model=UserMe)
+def me(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    nome: str | None = None
+    genero: str | None = None
+    if current_user.role == UserRole.employee and current_user.employee_profile:
+        nome = current_user.employee_profile.nome
+        genero = current_user.employee_profile.genero
+    return UserMe(id=current_user.id, email=current_user.email, role=current_user.role.value, nome=nome, genero=genero)
 
 
 @router.post("/pair-device", response_model=PairDeviceResponse)
