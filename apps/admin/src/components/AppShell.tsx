@@ -11,6 +11,8 @@ type NavItem = { href: string; label: string };
 
 type UserRole = "admin" | "employee";
 
+const ADMIN_MOTTO = "O Espírito de Cristo Jesus administra";
+
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/usuarios", label: "Usuários" },
@@ -86,12 +88,22 @@ export function AppShell({ title, children }: { title: string; children: React.R
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-fuchsia-50 text-zinc-900">
-      <div
-        className={
-          "mx-auto grid min-h-screen w-full max-w-6xl grid-cols-1 gap-6 px-4 py-6 " +
-          (isEmployee ? "" : "md:grid-cols-[260px_1fr]")
-        }
-      >
+      <div className="mx-auto w-full max-w-6xl px-4 py-6">
+        {role === "admin" ? (
+          <div className="mb-6">
+            <div className="text-center text-3xl font-extrabold tracking-tight">
+              <span className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 bg-clip-text text-transparent drop-shadow-sm">
+                {ADMIN_MOTTO}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className={
+            "grid min-h-[calc(100vh-3rem)] w-full grid-cols-1 gap-6 " + (isEmployee ? "" : "md:grid-cols-[260px_1fr]")
+          }
+        >
         {!isEmployee ? (
           <aside className="rounded-2xl border border-zinc-200/70 bg-white/70 p-4 shadow-sm backdrop-blur">
           <div className="flex items-center justify-between">
@@ -212,6 +224,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
             </div>
           ) : null}
         </main>
+        </div>
       </div>
     </div>
   );
