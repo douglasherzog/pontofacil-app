@@ -7,6 +7,7 @@
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
     "setup:env:admin": "node tools/setup-env-admin.mjs",
-    "docs:pdf": "node tools/build-manual.mjs"
+    "docs:pdf": "node tools/build-manual.mjs",
+    "onboarding": "node tools/onboarding.mjs"
   }
 }
