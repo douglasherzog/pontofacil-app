@@ -11,7 +11,7 @@ type EmployeeOut = {
   id: number;
   email: string;
   nome: string;
-  genero: EmployeeGenero;
+  genero: EmployeeGenero | null;
   is_active: boolean;
 };
 
@@ -65,7 +65,7 @@ export default function UsuariosPage() {
     setEditEmployee(employee);
     setEditNome(employee.nome);
     setEditEmail(employee.email);
-    setEditGenero(employee.genero);
+    setEditGenero(employee.genero ?? "homem");
     setEditPassword("");
     setEditError(null);
     setEditOpen(true);
@@ -449,7 +449,7 @@ export default function UsuariosPage() {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-zinc-700">Gênero</label>
                 <select
-                  value={editGenero}
+                  value={editGenero ?? "homem"}
                   onChange={(e) => setEditGenero(e.target.value as EmployeeGenero)}
                   className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
